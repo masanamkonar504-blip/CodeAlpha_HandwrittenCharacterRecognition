@@ -72,7 +72,7 @@ with col2:
     st.markdown("### 🧠 AI Prediction")
 
     if predict_button:
-        if canvas_result.image_data_url is not None:
+        if canvas_result.json_data is not None and len(canvas_result.json_data.get("objects", [])) > 0:
 
             image = Image.fromarray(
                 canvas_result.image_data.astype("uint8")
