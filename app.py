@@ -33,14 +33,14 @@ div.stButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# Load model
+# Load trained model
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model("neurowrite_model.keras")
 
 model = load_model()
 
-# Website heading
+# Heading
 st.title("✍️ NeuroWrite AI")
 st.subheader("Intelligent Handwritten Character Recognition")
 st.write("Draw any uppercase letter (A-Z) or digit (0-9) below.")
@@ -72,23 +72,20 @@ with col2:
     st.markdown("### 🧠 AI Prediction")
 
     if predict_button:
-        if canvas_result.json_data is not None and len(canvas_result.json_data.get("objects", [])) > 0:
+        if canvas_result is not None and canvas_result.image_data is not None:
+            image_array = canvas_result.image_data.astype("uint8")
 
-            image = Image.fromarray(
-                canvas_result.image_data.astype("uint8")
-            ).convert("L")
+            image = Image.fromarray(image_array).convert("L")
             image = ImageOps.invert(image)
-
             image = image.resize((28, 28))
 
             image_array = np.array(image).astype("float32") / 255.0
             image_array = image_array.reshape(1, 28, 28, 1)
 
             predictions = model.predict(image_array, verbose=0)[0]
-
             top_indices = np.argsort(predictions)[-3:][::-1]
 
-            best_index = top_indices[0]
+            best_index = int(top_indices[0])
 
             if best_index < 10:
                 character = str(best_index)
@@ -108,15 +105,17 @@ with col2:
             st.markdown("### 🏆 Top 3 Predictions")
 
             for index in top_indices:
+                index = int(index)
+
                 if index < 10:
                     label = str(index)
                 else:
                     label = chr(ord("A") + index - 10)
 
-                confidence = predictions[index] * 100
+                confidence = float(predictions[index] * 100)
 
                 st.write(f"**{label}** — {confidence:.2f}%")
-                st.progress(float(confidence / 100))
+                st.progress(confidence / 100)
 
         else:
             st.warning("Please draw a character first!")
