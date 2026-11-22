@@ -5,25 +5,42 @@ import numpy as np
 from PIL import Image, ImageOps
 from streamlit_drawable_canvas import st_canvas
 
-# Page settings
+# ----------------------------------
+# PAGE SETTINGS
+# ----------------------------------
+
 st.set_page_config(
     page_title="NeuroWrite AI",
     page_icon="✍️",
     layout="wide"
 )
 
-# Custom design
+# ----------------------------------
+# CUSTOM DESIGN
+# ----------------------------------
+
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #0b1020, #21133d, #101c35);
+    background: linear-gradient(
+        135deg,
+        #0b1020,
+        #21133d,
+        #101c35
+    );
     color: white;
 }
+
 h1, h2, h3, p, label {
     color: white !important;
 }
+
 div.stButton > button {
-    background: linear-gradient(90deg, #8b5cf6, #06b6d4);
+    background: linear-gradient(
+        90deg,
+        #8b5cf6,
+        #06b6d4
+    );
     color: white;
     border: none;
     border-radius: 12px;
@@ -33,23 +50,43 @@ div.stButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# Load trained model
+# ----------------------------------
+# LOAD TRAINED MODEL
+# ----------------------------------
+
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model("neurowrite_model.keras")
+    return tf.keras.models.load_model(
+        "neurowrite_model.keras"
+    )
 
 model = load_model()
 
-# Heading
+# ----------------------------------
+# WEBSITE HEADING
+# ----------------------------------
+
 st.title("✍️ NeuroWrite AI")
-st.subheader("Intelligent Handwritten Character Recognition")
-st.write("Draw any uppercase letter (A-Z) or digit (0-9) below.")
+
+st.subheader(
+    "Intelligent Handwritten Character Recognition"
+)
+
+st.write(
+    "Draw any uppercase English letter (A-Z) "
+    "or digit (0-9) below."
+)
 
 st.markdown("---")
+
+# ----------------------------------
+# MAIN LAYOUT
+# ----------------------------------
 
 col1, col2 = st.columns(2)
 
 with col1:
+
     st.markdown("### 🎨 Drawing Canvas")
 
     canvas_result = st_canvas(
@@ -70,56 +107,154 @@ with col1:
     )
 
 with col2:
+
     st.markdown("### 🧠 AI Prediction")
 
     if predict_button:
-        if canvas_result is not None and canvas_result.image_data is not None:
-            image_array = canvas_result.image_data.astype("uint8")
 
-            image = Image.fromarray(image_array).convert("L")
+        if (
+            canvas_result is not None
+            and canvas_result.image_data is not None
+        ):
+
+            # Convert canvas to grayscale
+            image = Image.fromarray(
+                canvas_result.image_data.astype("uint8")
+            ).convert("L")
+
+            # Invert black writing to white
             image = ImageOps.invert(image)
-            image = image.resize((28, 28))
 
-            image_array = np.array(image).astype("float32") / 255.0
-            image_array = image_array.reshape(1, 28, 28, 1)
+            # Find character boundaries
+            image_array = np.array(image)
 
-            predictions = model.predict(image_array, verbose=0)[0]
-            top_indices = np.argsort(predictions)[-3:][::-1]
+            coords = np.argwhere(image_array > 30)
 
-            best_index = int(top_indices[0])
+            if len(coords) > 0:
 
-            if best_index < 10:
-                character = str(best_index)
-            else:
-                character = chr(ord("A") + best_index - 10)
+                y_min, x_min = coords.min(axis=0)
+                y_max, x_max = coords.max(axis=0)
 
-            st.markdown(
-                f"<h1 style='font-size:90px;text-align:center;color:#67e8f9 !important;'>{character}</h1>",
-                unsafe_allow_html=True
-            )
+                # Crop character
+                image = image.crop((
+                    x_min,
+                    y_min,
+                    x_max + 1,
+                    y_max + 1
+                ))
 
-            st.metric(
-                "Confidence",
-                f"{predictions[best_index] * 100:.2f}%"
-            )
+                # Resize while preserving proportions
+                image.thumbnail((20, 20))
 
-            st.markdown("### 🏆 Top 3 Predictions")
+                # Center in 28x28 image
+                final_image = Image.new(
+                    "L",
+                    (28, 28),
+                    0
+                )
 
-            for index in top_indices:
-                index = int(index)
+                x_offset = (28 - image.width) // 2
+                y_offset = (28 - image.height) // 2
 
-                if index < 10:
-                    label = str(index)
+                final_image.paste(
+                    image,
+                    (x_offset, y_offset)
+                )
+
+                # Prepare CNN input
+                image_array = (
+                    np.array(final_image)
+                    .astype("float32") / 255.0
+                )
+
+                image_array = image_array.reshape(
+                    1, 28, 28, 1
+                )
+
+                # AI prediction
+                predictions = model.predict(
+                    image_array,
+                    verbose=0
+                )[0]
+
+                top_indices = np.argsort(
+                    predictions
+                )[-3:][::-1]
+
+                best_index = int(top_indices[0])
+
+                # Convert prediction index to character
+                if best_index < 10:
+                    character = str(best_index)
                 else:
-                    label = chr(ord("A") + index - 10)
+                    character = chr(
+                        ord("A") + best_index - 10
+                    )
 
-                confidence = float(predictions[index] * 100)
+                # Display main prediction
+                st.markdown(
+                    f"""
+                    <h1 style="
+                    font-size:90px;
+                    text-align:center;
+                    color:#67e8f9 !important;
+                    ">
+                    {character}
+                    </h1>
+                    """,
+                    unsafe_allow_html=True
+                )
 
-                st.write(f"**{label}** — {confidence:.2f}%")
-                st.progress(confidence / 100)
+                # Confidence
+                confidence = float(
+                    predictions[best_index] * 100
+                )
+
+                st.metric(
+                    "Confidence",
+                    f"{confidence:.2f}%"
+                )
+
+                # Top 3 predictions
+                st.markdown("### 🏆 Top 3 Predictions")
+
+                for index in top_indices:
+
+                    index = int(index)
+
+                    if index < 10:
+                        label = str(index)
+                    else:
+                        label = chr(
+                            ord("A") + index - 10
+                        )
+
+                    score = float(
+                        predictions[index] * 100
+                    )
+
+                    st.write(
+                        f"**{label}** — {score:.2f}%"
+                    )
+
+                    st.progress(score / 100)
+
+            else:
+                st.warning(
+                    "Please draw a character first!"
+                )
 
         else:
-            st.warning("Please draw a character first!")
+            st.warning(
+                "Please draw a character first!"
+            )
+
+# ----------------------------------
+# FOOTER
+# ----------------------------------
 
 st.markdown("---")
-st.caption("NeuroWrite AI | Powered by CNN and TensorFlow")
+
+st.caption(
+    "NeuroWrite AI | Powered by CNN and TensorFlow"
+)
